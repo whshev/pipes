@@ -1,5 +1,6 @@
 package com.tinkerpop.pipes.util;
 
+import com.tinkerpop.pipes.AsyncPipe;
 import com.tinkerpop.pipes.Pipe;
 
 import java.util.ArrayList;
@@ -7,6 +8,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * A Pipeline is a linear composite of Pipes.
@@ -25,8 +28,14 @@ public class Pipeline<S, E> implements Pipe<S, E>, MetaPipe {
     protected Iterator<S> starts;
     protected boolean pathEnabled = false;
 
+    //Added by whshev.
+    private static int defaultThreadNumber = 10;
+    protected ExecutorService executorService;
+    protected int threadNumber = defaultThreadNumber;
+
     public Pipeline() {
         this.pipes = new ArrayList<Pipe>();
+        this.setThread(defaultThreadNumber);
     }
 
     /**
@@ -38,6 +47,7 @@ public class Pipeline<S, E> implements Pipe<S, E>, MetaPipe {
     public Pipeline(final List<Pipe> pipes) {
         this.pipes = pipes;
         this.setPipes(pipes);
+        this.setThread(defaultThreadNumber);
     }
 
 
@@ -65,6 +75,32 @@ public class Pipeline<S, E> implements Pipe<S, E>, MetaPipe {
         }
     }
 
+    //Added by whshev.
+    protected void setPipeThreadNumber(Pipe p) {
+        ((AsyncPipe) p).setExecutorService(this.executorService);
+        ((AsyncPipe) p).setThreadNumber(this.threadNumber);
+    }
+
+    //Added by whshev.
+    protected void setPipesThreadNumber() {
+        for (Pipe p : this.pipes) {
+            if (p instanceof AsyncPipe) {
+                setPipeThreadNumber(p);
+            }
+        }
+    }
+
+    /**
+     * Set the max number of active threads in the pipeline.
+     * @param threadNumber the threshold of active threads.
+     */
+    //Added by whshev.
+    public void setThread(final int threadNumber) {
+        this.threadNumber = threadNumber;
+        this.executorService = Executors.newCachedThreadPool();
+        setPipesThreadNumber();
+    }
+
     /**
      * Adds a new pipe to the end of the pipeline and then reconstructs the pipeline chain.
      *
@@ -73,11 +109,13 @@ public class Pipeline<S, E> implements Pipe<S, E>, MetaPipe {
     public void addPipe(final Pipe pipe) {
         this.pipes.add(pipe);
         this.setPipes(this.pipes);
+        this.setPipesThreadNumber();
     }
 
     public void addPipe(final int location, final Pipe pipe) {
         this.pipes.add(location, pipe);
         this.setPipes(this.pipes);
+        this.setPipesThreadNumber();
     }
 
     public void setStarts(final Iterator<S> starts) {
