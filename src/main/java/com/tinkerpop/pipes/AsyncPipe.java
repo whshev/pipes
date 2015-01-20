@@ -36,7 +36,12 @@ public abstract class AsyncPipe<S, E> extends AbstractPipe<S, E> {
             this.prefetchThread = new Thread(new PrefetchThread<T>(futureQueue));
         }
         if (!this.prefetchThread.isAlive() && starts.hasNext()) {
-            this.prefetchThread.run();
+            try {
+                this.prefetchThread.start();
+            } catch (Exception e) {
+                this.prefetchThread = new Thread(new PrefetchThread<T>(futureQueue));
+                this.prefetchThread.start();
+            }
         }
     }
 
