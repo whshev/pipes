@@ -2,13 +2,11 @@ package com.tinkerpop.pipes.filter;
 
 import com.tinkerpop.blueprints.Compare;
 import com.tinkerpop.blueprints.Element;
-import com.tinkerpop.pipes.AbstractPipe;
 import com.tinkerpop.pipes.AsyncPipe;
 import com.tinkerpop.pipes.util.structures.FutureQueue;
 
 import java.util.NoSuchElementException;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.*;
 
 /**
  * IntervalFilterPipe will filter an element flowing through it according to whether a particular property value of the element is within provided range.
@@ -22,34 +20,36 @@ public class IntervalFilterPipe<S extends Element> extends AsyncPipe<S, S> imple
     private final Comparable startValue;
     private final Comparable endValue;
 
-    //Added by whshev.
-    protected FutureQueue<S> futureQueue = new FutureQueue<S>(this.futureQueueSize);
-
     public IntervalFilterPipe(final String key, final Comparable startValue, final Comparable endValue) {
         this.key = key;
         this.startValue = startValue;
         this.endValue = endValue;
+        this.futureQueue = new FutureQueue<S>(FUTURE_QUEUE_SIZE);
     }
 
     //Modified by whshev.
     protected S processNextStart() {
-        checkThreadInit(this.futureQueue);
+        checkThreadInit();
         while (true) {
-            notifyPrefetch(this.futureQueue);
+            notifyPrefetch();
             while (this.futureQueue.hasNextFuture()) {
                 S value = null;
+                Future<S> future = this.futureQueue.getNextFuture();
                 try {
-                    value = this.futureQueue.getNextFuture().get();
+                    value = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 } catch (ExecutionException e) {
                     e.printStackTrace();
+                } catch (TimeoutException e) {
+                    e.printStackTrace();
+                    future.cancel(true);
                 }
-                notifyPrefetch(this.futureQueue);
+                notifyPrefetch();
                 if (value != null)
                     return value;
             }
-            if (isEnded(this.futureQueue)) throw new NoSuchElementException();
+            if (isEnded()) throw new NoSuchElementException();
         }
     }
 
@@ -67,8 +67,8 @@ public class IntervalFilterPipe<S extends Element> extends AsyncPipe<S, S> imple
 
     //Added by whshev.
     @Override
-    protected <T> Callable<T> createNewCall(S s, FutureQueue<T> futureQueue) {
-        return (Callable<T>) new Calculator(s);
+    protected Callable createNewCall(S s) {
+        return new Calculator(s);
     }
 
     //Added by whshev.

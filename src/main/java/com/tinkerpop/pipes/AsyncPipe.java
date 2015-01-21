@@ -17,8 +17,10 @@ public abstract class AsyncPipe<S, E> extends AbstractPipe<S, E> {
 
     protected ExecutorService executorService;
     protected int threadNumber = 10;
-    protected static int futureQueueSize = 1000;
-    protected Thread prefetchThread;
+    protected static int FUTURE_QUEUE_SIZE = 1000;
+    protected static int TIMEOUT_SECONDS = 10;
+    protected PrefetchThread prefetchThread;
+    protected FutureQueue futureQueue;
 
     public void setThreadNumber(int threadNumber) {
         this.threadNumber = threadNumber;
@@ -28,18 +30,19 @@ public abstract class AsyncPipe<S, E> extends AbstractPipe<S, E> {
         this.executorService = es;
     }
 
-    protected <T> void checkThreadInit(FutureQueue<T> futureQueue) {
+    protected void checkThreadInit() {
         if (this.executorService == null) {
             this.executorService = Executors.newCachedThreadPool();
         }
         if (this.prefetchThread == null) {
-            this.prefetchThread = new Thread(new PrefetchThread<T>(futureQueue));
+            this.prefetchThread = new PrefetchThread();
         }
         if (!this.prefetchThread.isAlive() && starts.hasNext()) {
             try {
                 this.prefetchThread.start();
             } catch (Exception e) {
-                this.prefetchThread = new Thread(new PrefetchThread<T>(futureQueue));
+                e.printStackTrace();
+                this.prefetchThread = new PrefetchThread();
                 this.prefetchThread.start();
             }
         }
@@ -50,30 +53,29 @@ public abstract class AsyncPipe<S, E> extends AbstractPipe<S, E> {
         return ((ThreadPoolExecutor)this.executorService).getActiveCount();
     }
 
-    protected abstract <T> Callable<T> createNewCall(S s, FutureQueue<T> futureQueue);
+    protected abstract Callable createNewCall(S s);
 
     //Checks whether this Pipe emit all the values.
-    protected <T> boolean isEnded(FutureQueue<T> futureQueue) {
-        return !this.prefetchThread.isAlive() && !futureQueue.hasNextFuture();
+    protected boolean isEnded() {
+        return !this.prefetchThread.isAlive() && !this.futureQueue.hasNextFuture() && !starts.hasNext();
     }
 
-    protected <T> void notifyPrefetch(FutureQueue<T> futureQueue) {
-        synchronized (this.prefetchThread) {
-            if (futureQueue.needAdd() && this.prefetchThread.isAlive()) {
-                this.prefetchThread.notify();
+    protected void notifyPrefetch() {
+        if (this.prefetchThread.isAlive()) {
+            if (futureQueue.needAdd()) {
+                synchronized (this.prefetchThread) {
+                    this.prefetchThread.notify();
+                }
             }
+        } else {
+            this.prefetchThread = new PrefetchThread();
+            this.prefetchThread.start();
         }
     }
 
     //The prefetch thread will be blocked when the future queue do not need a new element.
     //It will be notified by processNextStart() when the future queue do not have enough element.
-    protected class PrefetchThread<T> implements Runnable {
-
-        public FutureQueue<T> futureQueue;
-
-        public PrefetchThread(FutureQueue<T> q) {
-            this.futureQueue = q;
-        }
+    protected class PrefetchThread extends Thread {
 
         @Override
         public void run() {
@@ -88,7 +90,7 @@ public abstract class AsyncPipe<S, E> extends AbstractPipe<S, E> {
                         S s = starts.next();
                         while (true) {
                             if (threadNumber > getThreadCount()) {
-                                Future<T> future = executorService.submit(createNewCall(s, futureQueue));
+                                Future future = executorService.submit(createNewCall(s));
                                 futureQueue.addFuture(future);
                                 break;
                             }

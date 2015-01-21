@@ -7,8 +7,7 @@ import com.tinkerpop.pipes.util.PipeHelper;
 import com.tinkerpop.pipes.util.structures.FutureQueue;
 
 import java.util.NoSuchElementException;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.*;
 
 /**
  * The PropertyFilterPipe either allows or disallows all Elements that have the provided value for a particular key.
@@ -21,41 +20,43 @@ public class PropertyFilterPipe<S extends Element, T> extends AsyncPipe<S, S> im
     private final Object value;
     private final Predicate predicate;
 
-    //Added by whshev.
-    protected FutureQueue<S> futureQueue = new FutureQueue<S>(futureQueueSize);
-
     public PropertyFilterPipe(final String key, final Predicate predicate, final Object value) {
         this.key = key;
         this.value = value;
         this.predicate = predicate;
+        this.futureQueue = new FutureQueue<S>(FUTURE_QUEUE_SIZE);
     }
 
     //Modified by whshev.
     protected S processNextStart() {
-        checkThreadInit(this.futureQueue);
+        checkThreadInit();
         while (true) {
-            notifyPrefetch(this.futureQueue);
+            notifyPrefetch();
             while (this.futureQueue.hasNextFuture()) {
                 S value = null;
+                Future<S> future = this.futureQueue.getNextFuture();
                 try {
-                    value = this.futureQueue.getNextFuture().get();
+                    value = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 } catch (ExecutionException e) {
                     e.printStackTrace();
+                } catch (TimeoutException e) {
+                    e.printStackTrace();
+                    future.cancel(true);
                 }
-                notifyPrefetch(this.futureQueue);
+                notifyPrefetch();
                 if (value != null)
                     return value;
             }
-            if (isEnded(this.futureQueue)) throw new NoSuchElementException();
+            if (isEnded()) throw new NoSuchElementException();
         }
     }
 
     //Added by whshev.
     @Override
-    protected <T> Callable<T> createNewCall(S s, FutureQueue<T> futureQueue) {
-        return (Callable<T>) new Calculator(s);
+    protected Callable createNewCall(S s) {
+        return new Calculator(s);
     }
 
     //Added by whshev.

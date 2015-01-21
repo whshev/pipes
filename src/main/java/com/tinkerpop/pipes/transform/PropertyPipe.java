@@ -19,45 +19,48 @@ public class PropertyPipe<S extends Element, E> extends AsyncPipe<S, E> implemen
     private final String key;
     private final boolean allowNull;
 
-    //Added by whshev.
-    protected FutureQueue<E> futureQueue = new FutureQueue<E>(futureQueueSize);
-
     public PropertyPipe(final String key) {
         this.key = key;
         this.allowNull = true;
+        this.futureQueue = new FutureQueue<E>(FUTURE_QUEUE_SIZE);
     }
 
     public PropertyPipe(final String key, final boolean allowNull) {
         this.key = key;
         this.allowNull = allowNull;
+        this.futureQueue = new FutureQueue<E>(FUTURE_QUEUE_SIZE);
     }
 
     //Modified by whshev.
     protected E processNextStart() {
-        checkThreadInit(this.futureQueue);
+        checkThreadInit();
         while (true) {
-            notifyPrefetch(this.futureQueue);
+            notifyPrefetch();
             while (this.futureQueue.hasNextFuture()) {
                 E value = null;
+                Future<E> future = this.futureQueue.getNextFuture();
                 try {
-                    value = this.futureQueue.getNextFuture().get();
+                    value = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 } catch (ExecutionException e) {
                     e.printStackTrace();
+                } catch (TimeoutException e) {
+                    e.printStackTrace();
+                    future.cancel(true);
                 }
-                notifyPrefetch(this.futureQueue);
+                notifyPrefetch();
                 if (this.allowNull || value != null)
                     return value;
             }
-            if (isEnded(this.futureQueue)) throw new NoSuchElementException();
+            if (isEnded()) throw new NoSuchElementException();
         }
     }
 
     //Added by whshev.
     @Override
-    public <E> Callable<E> createNewCall(S s, FutureQueue<E> futureQueue) {
-        return (Callable<E>) new Calculator(s);
+    public Callable createNewCall(S s) {
+        return new Calculator(s);
     }
 
     //Added by whshev.

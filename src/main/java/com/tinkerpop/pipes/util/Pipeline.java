@@ -29,13 +29,13 @@ public class Pipeline<S, E> implements Pipe<S, E>, MetaPipe {
     protected boolean pathEnabled = false;
 
     //Added by whshev.
-    private static int defaultThreadNumber = 10;
+    private static int DEFAULT_THREAD_NUM = 10;
     protected ExecutorService executorService;
-    protected int threadNumber = defaultThreadNumber;
+    protected int threadNumber = DEFAULT_THREAD_NUM;
 
     public Pipeline() {
         this.pipes = new ArrayList<Pipe>();
-        this.setThread(defaultThreadNumber);
+        this.setThread(DEFAULT_THREAD_NUM);
     }
 
     /**
@@ -47,7 +47,7 @@ public class Pipeline<S, E> implements Pipe<S, E>, MetaPipe {
     public Pipeline(final List<Pipe> pipes) {
         this.pipes = pipes;
         this.setPipes(pipes);
-        this.setThread(defaultThreadNumber);
+        this.setThread(DEFAULT_THREAD_NUM);
     }
 
 
