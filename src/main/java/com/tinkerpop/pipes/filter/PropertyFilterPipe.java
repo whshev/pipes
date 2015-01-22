@@ -6,6 +6,9 @@ import com.tinkerpop.pipes.AsyncPipe;
 import com.tinkerpop.pipes.util.PipeHelper;
 import com.tinkerpop.pipes.util.structures.FutureQueue;
 
+import java.util.AbstractMap;
+import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.*;
 
@@ -24,7 +27,7 @@ public class PropertyFilterPipe<S extends Element, T> extends AsyncPipe<S, S> im
         this.key = key;
         this.value = value;
         this.predicate = predicate;
-        this.futureQueue = new FutureQueue<S>(FUTURE_QUEUE_SIZE);
+        this.futureQueue = new FutureQueue<Map.Entry<S, List>>(FUTURE_QUEUE_SIZE);
     }
 
     //Modified by whshev.
@@ -33,10 +36,10 @@ public class PropertyFilterPipe<S extends Element, T> extends AsyncPipe<S, S> im
         while (true) {
             notifyPrefetch();
             while (this.futureQueue.hasNextFuture()) {
-                S value = null;
-                Future<S> future = this.futureQueue.getNextFuture();
+                Future<Map.Entry<S, List>> future = this.futureQueue.getNextFuture();
+                Map.Entry<S, List> me = null;
                 try {
-                    value = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                    me = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 } catch (ExecutionException e) {
@@ -46,8 +49,10 @@ public class PropertyFilterPipe<S extends Element, T> extends AsyncPipe<S, S> im
                     future.cancel(true);
                 }
                 notifyPrefetch();
-                if (value != null)
-                    return value;
+                if (me != null && me.getKey() != null) {
+                    this.currentPath = me.getValue();
+                    return me.getKey();
+                }
             }
             if (isEnded()) throw new NoSuchElementException();
         }
@@ -55,24 +60,26 @@ public class PropertyFilterPipe<S extends Element, T> extends AsyncPipe<S, S> im
 
     //Added by whshev.
     @Override
-    protected Callable createNewCall(S s) {
-        return new Calculator(s);
+    protected Callable createNewCall(S s, List path) {
+        return new Calculator(s, path);
     }
 
     //Added by whshev.
-    public class Calculator implements Callable<S> {
+    public class Calculator implements Callable<Map.Entry<S, List>> {
 
         private S s;
+        private List p;
 
-        public Calculator(S s) {
+        public Calculator(S s, List path) {
             this.s = s;
+            this.p = path;
         }
 
-        public S call() throws Exception {
+        public Map.Entry<S, List> call() throws Exception {
             if (predicate.evaluate(s.getProperty(key), value)) {
-                return s;
+                return new AbstractMap.SimpleEntry<S, List>(this.s, this.p);
             } else {
-                return null;
+                return new AbstractMap.SimpleEntry<S, List>(null, this.p);
             }
         }
 

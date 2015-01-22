@@ -1,7 +1,12 @@
 package com.tinkerpop.pipes;
 
+import com.tinkerpop.pipes.filter.FilterPipe;
+import com.tinkerpop.pipes.sideeffect.SideEffectPipe;
+import com.tinkerpop.pipes.transform.TransformPipe;
 import com.tinkerpop.pipes.util.structures.FutureQueue;
 
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -21,6 +26,7 @@ public abstract class AsyncPipe<S, E> extends AbstractPipe<S, E> {
     protected static int TIMEOUT_SECONDS = 10;
     protected PrefetchThread prefetchThread;
     protected FutureQueue futureQueue;
+    protected List currentPath;
 
     public void setThreadNumber(int threadNumber) {
         this.threadNumber = threadNumber;
@@ -48,12 +54,32 @@ public abstract class AsyncPipe<S, E> extends AbstractPipe<S, E> {
         }
     }
 
+    @Override
+    public List getCurrentPath() {
+        if (this.pathEnabled) {
+            final List pathElements = this.currentPath;
+            if (this instanceof TransformPipe) {
+                pathElements.add(this.currentEnd);
+            } else if (!(this instanceof SideEffectPipe) && !(this instanceof FilterPipe)) {
+                final int size = pathElements.size();
+                if (size == 0 || pathElements.get(size - 1) != this.currentEnd) {
+                    // do not repeat filters or side-effects as they dup the object
+                    // this is for backwards compatibility to before TransformPipe interface
+                    pathElements.add(this.currentEnd);
+                }
+            }
+            return pathElements;
+        } else {
+            throw new RuntimeException(Pipe.NO_PATH_MESSAGE);
+        }
+    }
+
     //Returns the number of active threads in executorService
     private int getThreadCount() {
         return ((ThreadPoolExecutor)this.executorService).getActiveCount();
     }
 
-    protected abstract Callable createNewCall(S s);
+    protected abstract Callable createNewCall(S s, List path);
 
     //Checks whether this Pipe emit all the values.
     protected boolean isEnded() {
@@ -88,9 +114,13 @@ public abstract class AsyncPipe<S, E> extends AbstractPipe<S, E> {
                     }
                     while (starts.hasNext() && futureQueue.canAdd()) {
                         S s = starts.next();
+                        List prePath = null;
+                        if (pathEnabled) {
+                            prePath = getPathToHere();
+                        }
                         while (true) {
                             if (threadNumber > getThreadCount()) {
-                                Future future = executorService.submit(createNewCall(s));
+                                Future future = executorService.submit(createNewCall(s, prePath));
                                 futureQueue.addFuture(future);
                                 break;
                             }

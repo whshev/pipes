@@ -5,6 +5,9 @@ import com.tinkerpop.pipes.AsyncPipe;
 import com.tinkerpop.pipes.util.PipeHelper;
 import com.tinkerpop.pipes.util.structures.FutureQueue;
 
+import java.util.AbstractMap;
+import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.*;
 
@@ -22,13 +25,13 @@ public class PropertyPipe<S extends Element, E> extends AsyncPipe<S, E> implemen
     public PropertyPipe(final String key) {
         this.key = key;
         this.allowNull = true;
-        this.futureQueue = new FutureQueue<E>(FUTURE_QUEUE_SIZE);
+        this.futureQueue = new FutureQueue<Map.Entry<E, List>>(FUTURE_QUEUE_SIZE);
     }
 
     public PropertyPipe(final String key, final boolean allowNull) {
         this.key = key;
         this.allowNull = allowNull;
-        this.futureQueue = new FutureQueue<E>(FUTURE_QUEUE_SIZE);
+        this.futureQueue = new FutureQueue<Map.Entry<E, List>>(FUTURE_QUEUE_SIZE);
     }
 
     //Modified by whshev.
@@ -37,10 +40,10 @@ public class PropertyPipe<S extends Element, E> extends AsyncPipe<S, E> implemen
         while (true) {
             notifyPrefetch();
             while (this.futureQueue.hasNextFuture()) {
-                E value = null;
-                Future<E> future = this.futureQueue.getNextFuture();
+                Future<Map.Entry<E, List>> future = this.futureQueue.getNextFuture();
+                Map.Entry<E, List> me = null;
                 try {
-                    value = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                    me = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 } catch (ExecutionException e) {
@@ -50,8 +53,10 @@ public class PropertyPipe<S extends Element, E> extends AsyncPipe<S, E> implemen
                     future.cancel(true);
                 }
                 notifyPrefetch();
-                if (this.allowNull || value != null)
-                    return value;
+                if (me != null && (this.allowNull || me.getKey() != null)) {
+                    this.currentPath = me.getValue();
+                    return me.getKey();
+                }
             }
             if (isEnded()) throw new NoSuchElementException();
         }
@@ -59,21 +64,23 @@ public class PropertyPipe<S extends Element, E> extends AsyncPipe<S, E> implemen
 
     //Added by whshev.
     @Override
-    public Callable createNewCall(S s) {
-        return new Calculator(s);
+    public Callable createNewCall(S s, List path) {
+        return new Calculator(s, path);
     }
 
     //Added by whshev.
-    public class Calculator implements Callable<E> {
+    public class Calculator implements Callable<Map.Entry<E, List>> {
 
         private Element e;
+        private List p;
 
-        public Calculator(Element e) {
+        public Calculator(Element e, List path) {
             this.e = e;
+            this.p = path;
         }
 
-        public E call() throws Exception {
-            return e.getProperty(key);
+        public Map.Entry<E, List> call() throws Exception {
+            return new AbstractMap.SimpleEntry<E, List>((E) e.getProperty(key), this.p);
         }
 
     }
