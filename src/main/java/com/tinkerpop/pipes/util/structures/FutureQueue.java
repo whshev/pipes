@@ -1,5 +1,7 @@
 package com.tinkerpop.pipes.util.structures;
 
+import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Future;
 
@@ -10,11 +12,22 @@ import java.util.concurrent.Future;
 public class FutureQueue<T> {
 
     private ArrayBlockingQueue<Future<T>> futureQueue;
+    private LinkedList<List> pathQueue;
     private int maxsize;
 
     public FutureQueue(int queueSize) {
         this.futureQueue = new ArrayBlockingQueue<Future<T>>(queueSize);
+        this.pathQueue = new LinkedList<List>();
         this.maxsize = queueSize;
+    }
+
+    public void addFuturePath(Future<T> future, List path){
+        try {
+            this.futureQueue.put(future);
+            this.pathQueue.add(path);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
     public void addFuture(Future<T> future){
@@ -44,5 +57,9 @@ public class FutureQueue<T> {
 
     public Future<T> getNextFuture() {
         return this.futureQueue.poll();
+    }
+
+    public List getNextPath() {
+        return this.pathQueue.poll();
     }
 }

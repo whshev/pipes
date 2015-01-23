@@ -6,12 +6,7 @@ import com.tinkerpop.pipes.transform.TransformPipe;
 import com.tinkerpop.pipes.util.structures.FutureQueue;
 
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.*;
 
 /**
  * An AsyncPipe includes an asynchronous thread to prefetch incoming S from the previous Pipe.
@@ -79,7 +74,7 @@ public abstract class AsyncPipe<S, E> extends AbstractPipe<S, E> {
         return ((ThreadPoolExecutor)this.executorService).getActiveCount();
     }
 
-    protected abstract Callable createNewCall(S s, List path);
+    protected abstract Callable createNewCall(S s);
 
     //Checks whether this Pipe emit all the values.
     protected boolean isEnded() {
@@ -114,14 +109,15 @@ public abstract class AsyncPipe<S, E> extends AbstractPipe<S, E> {
                     }
                     while (starts.hasNext() && futureQueue.canAdd()) {
                         S s = starts.next();
-                        List prePath = null;
-                        if (pathEnabled) {
-                            prePath = getPathToHere();
-                        }
                         while (true) {
                             if (threadNumber > getThreadCount()) {
-                                Future future = executorService.submit(createNewCall(s, prePath));
-                                futureQueue.addFuture(future);
+                                Future future = executorService.submit(createNewCall(s));
+                                if (pathEnabled) {
+                                    List prePath = getPathToHere();
+                                    futureQueue.addFuturePath(future, prePath);
+                                } else {
+                                    futureQueue.addFuture(future);
+                                }
                                 break;
                             }
                         }

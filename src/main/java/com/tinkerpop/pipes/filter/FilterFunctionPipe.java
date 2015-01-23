@@ -4,9 +4,7 @@ import com.tinkerpop.pipes.AsyncPipe;
 import com.tinkerpop.pipes.PipeFunction;
 import com.tinkerpop.pipes.util.structures.FutureQueue;
 
-import java.util.AbstractMap;
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.concurrent.*;
 
@@ -23,19 +21,31 @@ public class FilterFunctionPipe<S> extends AsyncPipe<S, S> implements FilterPipe
 
     public FilterFunctionPipe(final PipeFunction<S, Boolean> filterFunction) {
         this.filterFunction = filterFunction;
-        this.futureQueue = new FutureQueue<Map.Entry<S, List>>(FUTURE_QUEUE_SIZE);
+        this.futureQueue = new FutureQueue<S>(FUTURE_QUEUE_SIZE);
     }
 
     //Modified by whshev.
     protected S processNextStart() {
         checkThreadInit();
         while (true) {
-            notifyPrefetch();
             while (this.futureQueue.hasNextFuture()) {
-                Future<Map.Entry<S, List>> future = this.futureQueue.getNextFuture();
-                Map.Entry<S, List> me = null;
+                Future<S> future = this.futureQueue.getNextFuture();
+                notifyPrefetch();
                 try {
-                    me = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                    S value = null;
+                    if (pathEnabled) {
+                        List path = this.futureQueue.getNextPath();
+                        value = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                        if (value != null) {
+                            this.currentPath = path;
+                            return value;
+                        }
+                    } else {
+                        value = future.get(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                        if (value != null) {
+                            return value;
+                        }
+                    }
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 } catch (ExecutionException e) {
@@ -44,38 +54,32 @@ public class FilterFunctionPipe<S> extends AsyncPipe<S, S> implements FilterPipe
                     e.printStackTrace();
                     future.cancel(true);
                 }
-                notifyPrefetch();
-                if (me != null && me.getKey() != null) {
-                    this.currentPath = me.getValue();
-                    return me.getKey();
-                }
             }
+            notifyPrefetch();
             if (isEnded()) throw new NoSuchElementException();
         }
     }
 
     //Added by whshev.
     @Override
-    protected Callable createNewCall(S s, List path) {
-        return new Calculator(s, path);
+    protected Callable createNewCall(S s) {
+        return new Calculator(s);
     }
 
     //Added by whshev.
-    public class Calculator implements Callable<Map.Entry<S, List>> {
+    public class Calculator implements Callable<S> {
 
         private S s;
-        private List p;
 
-        public Calculator(S s, List path) {
+        public Calculator(S s) {
             this.s = s;
-            this.p = path;
         }
 
-        public Map.Entry<S, List> call() throws Exception {
+        public S call() throws Exception {
             if (filterFunction.compute(s)) {
-                return new AbstractMap.SimpleEntry<S, List>(this.s, this.p);
+                return this.s;
             } else {
-                return new AbstractMap.SimpleEntry<S, List>(null, this.p);
+                return null;
             }
         }
 
