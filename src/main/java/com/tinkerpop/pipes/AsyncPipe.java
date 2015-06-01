@@ -16,8 +16,8 @@ import java.util.concurrent.*;
 public abstract class AsyncPipe<S, E> extends AbstractPipe<S, E> {
 
     protected ExecutorService executorService;
-    protected int threadNumber = 10;
-    protected static int FUTURE_QUEUE_SIZE = 1000;
+    protected int threadNumber = 30;
+    protected static int FUTURE_QUEUE_SIZE = 2000;
     protected static int TIMEOUT_SECONDS = 10;
     protected PrefetchThread prefetchThread;
     protected FutureQueue futureQueue;

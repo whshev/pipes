@@ -3,11 +3,7 @@ package com.tinkerpop.pipes.util;
 import com.tinkerpop.pipes.AsyncPipe;
 import com.tinkerpop.pipes.Pipe;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -29,7 +25,7 @@ public class Pipeline<S, E> implements Pipe<S, E>, MetaPipe {
     protected boolean pathEnabled = false;
 
     //Added by whshev.
-    private static int DEFAULT_THREAD_NUM = 10;
+    private static int DEFAULT_THREAD_NUM = 30;
     protected ExecutorService executorService;
     protected int threadNumber = DEFAULT_THREAD_NUM;
 
